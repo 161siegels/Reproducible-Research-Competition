@@ -1,0 +1,219 @@
+---
+title: "EDA"
+author: "Spencer Siegel"
+date: "8/27/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+if(!require(dplyr)) {install.packages("dplyr", repos="http://cran.us.r-project.org"); library(dplyr)}
+if(!require(tidyverse)) {install.packages("tidyverse", repos="http://cran.us.r-project.org"); library(tidyverse)}
+if(!require(zoo)) {install.packages("zoo", repos="http://cran.us.r-project.org"); library(zoo)}
+if(!require(data.table)) {install.packages("data.table", repos="http://cran.us.r-project.org"); library(data.table)}
+if(!require(MASS)) {install.packages("MASS", repos="http://cran.us.r-project.org"); library(MASS)}
+if(!require(randomForest)) {install.packages("randomForest", repos="http://cran.us.r-project.org"); library(randomForest)}
+if(!require(Ckmeans.1d.dp)) {install.packages("Ckmeans.1d.dp", repos="http://cran.us.r-project.org"); library(Ckmeans.1d.dp)}
+if(!require(DAAG)) {install.packages("DAAG", repos="http://cran.us.r-project.org"); library(DAAG)}
+if(!require(e1071)) {install.packages("e1071", repos="http://cran.us.r-project.org"); library(e1071)}
+if(!require(splines)) {install.packages("splines", repos="http://cran.us.r-project.org"); library(splines)}
+if(!require(readr)) {install.packages("readr", repos="http://cran.us.r-project.org"); library(readr)}
+if(!require(class)) {install.packages("class", repos="http://cran.us.r-project.org"); library(class)}
+if(!require(xgboost)) {install.packages("xgboost", repos="http://cran.us.r-project.org"); library(xgboost)}
+if(!require(mlr)) {install.packages("mlr", repos="http://cran.us.r-project.org"); library(mlr)}
+if(!require(parallelMap)) {install.packages("parallelMap", repos="http://cran.us.r-project.org"); library(parallelMap)}
+if(!require(parallel)) {install.packages("parallel", repos="http://cran.us.r-project.org"); library(parallel)}
+if(!require(cluster)) {install.packages("cluster", repos="http://cran.us.r-project.org"); library(cluster)}
+if(!require(factoextra)) {install.packages("factoextra", repos="http://cran.us.r-project.org"); library(factoextra)}
+if(!require(gridExtra)) {install.packages("gridExtra", repos="http://cran.us.r-project.org"); library(gridExtra)}
+if(!require(cluster)) {install.packages("cluster", repos="http://cran.us.r-project.org"); library(cluster)}
+if(!require(mclust)) {install.packages("mclust", repos="http://cran.us.r-project.org"); library(mclust)}
+library(gridExtra)
+library(lme4)
+```
+
+## R Markdown
+
+#Import Kaggle Dataset
+```{r cars}
+shots = read.csv("shot_logs.csv")
+```
+
+```{r}
+times = strsplit(as.character(shots$GAME_CLOCK), ":")
+
+#makes times numeric
+for(i in 1:length(times)) {
+  times[[i]] = as.numeric(times[[i]])
+}
+formatted_times = c()
+
+#converts the list of tuples to times in the correct format
+for(i in 1:length(times)) {
+  formatted_times[i] = as.integer((600*times[[i]][1]) + 10*times[[i]][2])
+}
+
+#creates new formatted variables
+shots$GAME_CLOCK2 = formatted_times
+shots$SHOT_RESULT2 = as.integer(ifelse(shots$SHOT_RESULT == "missed", 0, 1))
+```
+
+```{r}
+pbp<-filter(read_csv("2014-15_pbp.csv"),EVENTMSGTYPE %in% c(1,2))
+pbp<-arrange(pbp,GAME_ID,EVENTNUM)
+pbp$point_diff=0
+j=0
+pbp$point_diff[1] = j
+for(i in 2:nrow(pbp)) {
+  prev_game = pbp$GAME_ID[i-1]
+  prev_point_diff=pbp$point_diff[i-1]
+  curr_game = pbp$GAME_ID[i]
+  
+  if(curr_game == prev_game & is.na(pbp$SCOREMARGIN[i])) {
+    j = prev_point_diff
+  }
+  else if(curr_game != prev_game & is.na(pbp$SCOREMARGIN[i]))
+  {
+    j=0
+  }
+  else {
+    j = pbp$SCOREMARGIN[i]
+  }
+  pbp$point_diff[i] = j
+}
+pbp
+
+#Gameid,playerid,shotnum
+pbp<-arrange(pbp,PLAYER1_ID,GAME_ID)
+j = 1
+pbp$shot_num=0
+pbp$shot_num[1] = j
+
+for(i in 2:nrow(pbp)) {
+  prev_player = pbp$PLAYER1_ID[i-1]
+  prev_game = pbp$GAME_ID[i-1]
+  
+  curr_player = pbp$PLAYER1_ID[i]
+  curr_game = pbp$GAME_ID[i]
+  
+  if(curr_player == prev_player & curr_game == prev_game) {
+    j = j + 1
+  } else {
+    j = 1
+  }
+  pbp$shot_num[i] = j
+}
+pbp
+
+final=merge(shots,pbp,by.x=c("GAME_ID","player_id","SHOT_NUMBER"),by.y=c("GAME_ID","PLAYER1_ID","shot_num"))
+
+final$description=ifelse(is.na(final$HOMEDESCRIPTION),final$VISITORDESCRIPTION,final$HOMEDESCRIPTION)
+final$jump_shot=ifelse(grepl("Jump Shot",final$description),1,0)
+final$putback=ifelse(grepl("Putback",final$description),1,0)
+final$layup=ifelse(grepl("Layup",final$description),1,0)
+final$bank=ifelse(grepl("Bank",final$description),1,0)
+final$dunk=ifelse(grepl("Dunk",final$description),1,0)
+final$driving=ifelse(grepl("Driving",final$description),1,0)
+final$tip=ifelse(grepl("Tip",final$description),1,0)
+final$pullup=ifelse(grepl("Pullup",final$description),1,0)
+final$fadeaway=ifelse(grepl("Fadeaway",final$description),1,0)
+final$running=ifelse(grepl("Running",final$description),1,0)
+final$hook=ifelse(grepl("Hook",final$description),1,0)
+final$reverse=ifelse(grepl("Reverse",final$description),1,0)
+final$turnaround=ifelse(grepl("Turnaround",final$description),1,0)
+final$fingerroll=ifelse(grepl("Finger Roll",final$description),1,0)
+final$block=ifelse(grepl("BLOCK",final$description),1,0)
+#Removes about 3,000 shots that were blocked
+final=filter(final,block==0)
+final=dplyr::select(final,-block)
+final$point_diff=abs(as.numeric(ifelse(final$point_diff=='TIE',0,final$point_diff)))
+final$point_diff=ifelse(final$LOCATION=="A",final$point_diff*-1,final$point_diff)
+#point diff before the shot
+final$point_diff=ifelse(final$EVENTMSGTYPE==1&final$LOCATION=="H",final$point_diff-final$PTS_TYPE,final$point_diff)
+final$point_diff=ifelse(final$EVENTMSGTYPE==1&final$LOCATION=="A",final$point_diff+final$PTS_TYPE,final$point_diff)7
+```
+
+
+https://www.basketball-reference.com/leagues/NBA_2014_per_game.html
+
+Need to attempt at least 41 threes per season on average.
+Need to play at least 58 games in each season.
+```{r}
+data_14<-read.csv("14.csv")
+data_14$Player=as.character(data_14$Player)
+data_14
+data_14$Player=sapply(strsplit(data_14$Player,"\\\\"), `[`, 1)
+data_14=data_14%>%group_by(Player)%>%summarize(Games14=max(G),FGA14=FGA[1]*max(G), FG3A14=X3PA[1]*max(G), FT_Percent14=FT.[1], FG_Percent14=FG.[1],FG3_Percent14=X3P.[1])
+
+data_13<-read.csv("13.csv")
+data_13$Player=as.character(data_13$Player)
+data_13$Player=sapply(strsplit(data_13$Player,"\\\\"), `[`, 1)
+data_13=data_13%>%group_by(Player)%>%summarize(Games13=max(G),FGA13=FGA[1]*max(G), FG3A13=X3PA[1]*max(G), FT_Percent13=FT.[1], FG_Percent13=FG.[1],FG3_Percent13=X3P.[1])
+
+
+past_data=filter(na.omit(merge(data_14,data_13,all=TRUE)),Games14+Games13>=116)
+past_data=past_data %>% group_by(Player)%>% summarize(FG_Percent=mean(FG_Percent14,FG_Percent13), FG3_Percent=mean(FG3_Percent14,FG3_Percent13),FG3=mean(FG3A13,FG3A14), FT_Percent=mean(FT_Percent14,FT_Percent13))
+
+past_data$FG3_Percent=ifelse(past_data$FG3>=41,past_data$FG3_Percent,0)
+past_data=dplyr::select(past_data,-FG3)
+past_data
+
+data_15=read.csv("15.csv")
+data_15$Player=as.character(data_15$Player)
+data_15$Player=sapply(strsplit(data_15$Player,"\\\\"), `[`, 1)
+data_15=data_15%>%group_by(Player)%>%summarize(Games15=max(G))%>% filter(Games15>=58)
+data_15
+
+merged=dplyr::select(merge(past_data,data_15),-Games15)
+merged$Player=tolower(merged$Player)
+merged$Player=str_replace(str_replace(merged$Player, "[.]", ""),"[.]", "")
+merged$Player=ifelse(merged$Player=="al-farouq aminu","al farouq aminu",merged$Player)
+merged$Player
+```
+
+#Dataframe that will be used has 60,744 shots
+```{r}
+final$player_name=ifelse(final$player_name=="jon ingles","joe ingles",ifelse(final$player_name=="jimmer dredette","jimmer fredette",ifelse(final$player_name=="mnta ellis","monta ellis",ifelse(final$player_name=="dirk nowtizski","dirk nowitzki",ifelse(final$player_name=="danilo gallinai","danilo gallinari",ifelse(final$player_name=="nerles noel","nerlens noel",ifelse(final$player_name=="beno urdih","beno udrih",ifelse(final$player_name=="dwayne wade","dwyane wade",ifelse(final$player_name=="alan crabbe","allen crabbe",as.character(final$player_name))))))))))
+
+data=merge(final,merged,by.x='player_name',by.y='Player')
+
+sort(unique(data$player_name))
+```
+
+```{r}
+names(data)
+data$ratio=ifelse(data$CLOSE_DEF_DIST==0,10*data$SHOT_DIST,data$SHOT_DIST*(1/data$CLOSE_DEF_DIST))
+data$ratio
+```
+
+```{r}
+data$End_SC <- ifelse(data$SHOT_CLOCK > 4,0,1)
+data$End_PC <- ifelse(data$SHOT_CLOCK > 40, 0,1)
+data$Quick_S <- ifelse(data$SHOT_CLOCK >= 19, 1, 0)
+data$Clutch_T <- ifelse(abs(data$point_diff) <= 5 & data$GAME_CLOCK2 <= 3000 & data$PERIOD.x >= 4, 1, 0)
+data$Garbage_T <- ifelse(abs(data$point_diff) >= (ceiling(data$GAME_CLOCK2/600) + 9) & data$PERIOD.x == 4, "1", "0")
+
+#Select out irrelevant columns to clean the data
+data=dplyr::select(data,-NEUTRALDESCRIPTION,-X1,-PCTIMESTRING,-PERIOD.y,-PERSON1TYPE,-PERSON2TYPE,-PLAYER1_TEAM_CITY,-PLAYER1_TEAM_NICKNAME,-PLAYER2_ID,-PLAYER2_NAME,-PLAYER2_TEAM_ABBREVIATION,-PLAYER2_TEAM_CITY,-PLAYER2_TEAM_ID,-PLAYER2_TEAM_NICKNAME,-PLAYER3_ID,-PLAYER3_NAME,-PLAYER3_TEAM_ABBREVIATION,-PLAYER3_TEAM_CITY,-PLAYER3_TEAM_ID,-PLAYER3_TEAM_NICKNAME,-SCORE,-VISITORDESCRIPTION,-WCTIMESTRING)
+data=rename(data,PERIOD=PERIOD.x)
+```
+
+
+```{r}
+#Get rid of data where shot clock is NA. Final dataset has 68,986 total shots.
+data2=data[!is.na(data$SHOT_CLOCK), ]
+write.csv(data2,"cleaned_data.csv")
+
+set.seed(1305)
+train<-data2 %>% group_by(player_name) %>% sample_frac(.7)
+test = anti_join(data2, train)
+mod<-glm(SHOT_RESULT2~ LOCATION+GAME_CLOCK2+SHOT_CLOCK+DRIBBLES+TOUCH_TIME+SHOT_DIST+PTS_TYPE+CLOSE_DEF_DIST+FG_Percent+FG3_Percent+SHOT_NUMBER+FT_Percent+ratio+End_SC+End_PC+Quick_S+Clutch_T+Garbage_T+PERIOD+point_diff+jump_shot+putback+layup+bank+dunk+driving+tip+pullup+fadeaway+running+hook+reverse+turnaround+fingerroll,data=train,family="binomial")
+summary(mod)
+p=predict(mod, newdata = test, type = "response")
+yhat=as.numeric(p>.525)
+paste("Accuracy is ", 1-mean(yhat!= test[,"SHOT_RESULT2"]))
+
+paste("Baseline Accuracy is ",1-mean(data2$SHOT_RESULT2))
+```
+
+
