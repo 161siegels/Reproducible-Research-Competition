@@ -130,7 +130,7 @@ final$point_diff=abs(as.numeric(ifelse(final$point_diff=='TIE',0,final$point_dif
 final$point_diff=ifelse(final$LOCATION=="A",final$point_diff*-1,final$point_diff)
 #point diff before the shot
 final$point_diff=ifelse(final$EVENTMSGTYPE==1&final$LOCATION=="H",final$point_diff-final$PTS_TYPE,final$point_diff)
-final$point_diff=ifelse(final$EVENTMSGTYPE==1&final$LOCATION=="A",final$point_diff+final$PTS_TYPE,final$point_diff)7
+final$point_diff=ifelse(final$EVENTMSGTYPE==1&final$LOCATION=="A",final$point_diff+final$PTS_TYPE,final$point_diff)
 ```
 
 
@@ -188,7 +188,7 @@ data$ratio
 
 ```{r}
 data$End_SC <- ifelse(data$SHOT_CLOCK > 4,0,1)
-data$End_PC <- ifelse(data$SHOT_CLOCK > 40, 0,1)
+data$End_PC <- ifelse(data$GAME_CLOCK2 > 40, 0,1)
 data$Quick_S <- ifelse(data$SHOT_CLOCK >= 19, 1, 0)
 data$Clutch_T <- ifelse(abs(data$point_diff) <= 5 & data$GAME_CLOCK2 <= 3000 & data$PERIOD.x >= 4, 1, 0)
 data$Garbage_T <- ifelse(abs(data$point_diff) >= (ceiling(data$GAME_CLOCK2/600) + 9) & data$PERIOD.x == 4, "1", "0")
