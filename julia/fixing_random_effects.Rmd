@@ -1,0 +1,48 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(MASS)
+library(dplyr)
+```
+
+```{r}
+df = read.csv("random_effects.csv")
+fixed_effects = read.csv("fixed_effects.csv")
+names = read.csv("player_names.csv")
+df2 <- data.frame(t(df))
+df2 = df2[-1,]
+
+# FULL MODEL
+row_names = list("Intercept", "layup", "dunk", "hook", "fadeaway", "pullup", "running", "driving", "reverse", "fingerroll", "putback", "turnaround", "bank", "point_diff", "tip", "TOUCH_TIME", "DRIBBLES", "ratio", "jump_shot", "End_SC", "End_PC", "LOCATION", "Quick_S", "Clutch_T", "Garbage_T", "SHOT_CLOCK", "SHOT_NUMBER")
+
+# PARTIAL MODEL
+# row_names = list("Intercept", "PC_Time", "SHOT_CLOCK", "Play_Loc_sd", "Play_Loc_fd", "Opp_Team_Def_Rtg", "TOUCH_TIME", "point_dif", "Jump_Shot", "shot_num", "cd1", "cd2", "cd3", "cd4", "cd5", "cd6", "Dunk", "d1", "d2", "d3", "d4", "d5", "d7", "d8", "d9", "d10", "d11", "d12")
+
+fixed_effect_row_names = list("Intercept", "past_FG_percent", "past_Free_Throw_percent", "past_Three_Pointers_percent")
+
+df3 = df2
+
+# name columns of ranef
+for(i in 1:length(df3)) {
+  colnames(df3)[i] = row_names[[i]]
+}
+
+# name rows of ranef
+for(i in 1:nrow(df3)) {
+  row.names(df3)[i] = names$x[i]
+}
+
+for(i in 1:nrow(fixed_effects)) {
+  row.names(fixed_effects)[i] = fixed_effect_row_names[[i]]
+}
+
+df3$Player_ID = row.names(df3)
+
+write.csv(file = "random_effects_fixed.csv", df3)
+write.csv(file = "fixed_effects_fixed.csv", fixed_effects)
+```
+
