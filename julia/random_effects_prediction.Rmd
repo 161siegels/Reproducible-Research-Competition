@@ -35,69 +35,68 @@ library(gridExtra)
 library(caret)
 ```
 
-```{r}
-temp=read.csv("with_clusters2.csv")
-train<-temp%>% group_by(Person1) %>% sample_frac(.7)
-test = anti_join(temp, train) 
-train
-
-```
-
-
-
-## R Markdown
-
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
+# Set up vairables
 ```{r cars}
-train<-read.csv("train1.csv")
-test =read.csv("test1.csv")
+train<-read.csv("scaled_train.csv")
+test =read.csv("scaled_test.csv")
 fix<-read.csv('fixed_effects_fixed.csv')
 re<-read.csv('random_effects_fixed.csv')
 ```
 
 ```{r}
-fix
-pred=rep(fix[1,3],18824)+fix[2,3]*test$past_FG_percent+fix[3,3]*test$past_Free_Throw_percent+fix[4,3]*test$past_Free_Throw_percent
-1/(exp(-pred)+1)
-exp(pred)/(1+exp(pred))
+test=test%>%dplyr::select(layup, dunk, hook, fadeaway, pullup, running, driving, reverse, fingerroll, putback, turnaround, bank, point_diff, tip, TOUCH_TIME, DRIBBLES, ratio, jump_shot, End_SC, End_PC, LOCATION, Quick_S, Clutch_T, Garbage_T, SHOT_CLOCK, SHOT_NUMBER, SHOT_RESULT2, player_name)
 
-re
+# test=test[,c(55,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54)]
 
-colnames(re)[2:54]
-product2=NULL
+# Create Player id for test
+test2 = test %>%
+  dplyr::select(player_name) %>%
+  unique()
+test2$Player_ID = 1:nrow(test2)
+test3 = inner_join(test, test2, by = c("player_name" = "player_name"))
+test = test3
+tmp = test$SHOT_RESULT2
+test$SHOT_RESULT2 = test$Player_ID
+test$Player_ID = tmp
+test = test %>%
+  rename(Player_ID2 = SHOT_RESULT2) %>%
+  rename(SHOT_RESULT2 = Player_ID) %>%
+  rename(Player_ID = Player_ID2)
 
-test=test%>%dplyr::select(Layup,Dunk,Hook,Fadeaway,Floating,Pullup,Step_Back,Running,Driving,Cutting,Reverse,Alley_Oop,Finger_Roll,Putback,Turnaround,Bank,point_dif,Tip,cd1,cd2,cd3,cd4,cd5,cd6,TOUCH_TIME,DRIBBLES,d1,d2,d3,d4,d5,d7,d8,d9,d10,d11,d12,ratio,Jump_Shot,Team_id_type,End_SC,End_PC,Option1,Play_Loc_sd,Play_Loc_fd,Opp_Team_Def_Rtg,Quick_S,Clutch_T,Garbage_T,PC_Time,SHOT_CLOCK,shot_num,Person1,Shot_Outcome)
-
-test$Intercept=1
-
-test$Intercept
-test=test[,c(55,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54)]
-
-for(i in 1:nrow(re)){
-  rows=NULL
-  mat=as.matrix(test[which(test$Person1==re$X[i]),1:53])
-  vec=as.vector(re[i,2:54],mode='numeric')
-  rows<-sweep(mat, MARGIN=2, vec, `*`)
-  names(product2) <- names(rows) 
-  rows<-cbind(rows,test[which(test$Person1==re$X[i]),3])
-  product2<-rbind(product2,rows)
-}
-
-product2<-as.data.frame(product2)
-
-finalpred=rowSums(product2)+pred
-1/(exp(-finalpred)+1)
-
-pred2<-ifelse(finalpred>0.5,1,0)
-accuracy<-sum(pred2==test$Shot_Outcome)/nrow(test)
-
-accuracy
-conf_matrix<-table(pred2,test[, "Shot_Outcome"])
-sensitivity(conf_matrix)
-specificity(conf_matrix)
-
+# Are all the column names in the same order in train and test?
+!(FALSE %in% (colnames(test[1:27]) == colnames(re[3:29])))
 ```
 
+```{r}
+re_multiply = re[,2:28]
+test$Intercept = 1
+test = test %>%
+  dplyr::select(Intercept, everything())
+test_multiply = test[,c(1:28,30)]
+
+shot_predictions = list()
+
+for(i in 1:nrow(re)) {
+
+  player_shots = test_multiply %>% 
+    filter(Player_ID == i)
+  player_coefficients = re_multiply[i,]
+  
+  player_shot_matrix = as.matrix(player_shots[1:27])
+  player_coefficients_matrix = as.vector(player_coefficients, mode = "numeric")
+  prod = player_shot_matrix %*% player_coefficients_matrix
+  
+  shot_predictions = append(shot_predictions, 1/(exp(-prod)+1))
+}
+```
+
+# Test Accuracy
+```{r}
+prediction = ifelse(shot_predictions >= 0.5, 1, 0)
+accuracy = sum(prediction == test$SHOT_RESULT2) / nrow(test)
+
+conf_matrix = table(prediction, test[, "SHOT_RESULT2"])
+print(paste("Accuracy:", accuracy))
+print(paste("Sensitivity:",sensitivity(conf_matrix)))
+print(paste("Specificity:",specificity(conf_matrix)))
+```
