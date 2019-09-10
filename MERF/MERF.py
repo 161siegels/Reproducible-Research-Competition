@@ -39,8 +39,8 @@ mrf.fit(X_train, Z_train, clusters_train, y_train)
 
 #Load model from joblib file if do not have time to fit the model.
 from joblib import dump, load
-dump(mrf, 'model2.joblib')
-mrf=load('model2.joblib')
+dump(mrf, 'model3.joblib')
+mrf=load('model3.joblib')
 
 
 #Organizing the test data
