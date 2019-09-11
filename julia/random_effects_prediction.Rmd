@@ -137,7 +137,15 @@ player_accuracies = player_accuracies[-1,]
 
 # Look at top accuracies
 ```{r}
+player_shot_counts = test %>%
+  group_by(Player_ID) %>%
+  summarize(
+    n=n()
+  ) %>%
+  filter(n >= 100)
+
 player_accuracies %>%
+  filter(Player %in% player_shot_counts$Player_ID) %>%
   top_n(10, wt = Accuracy) %>%
   inner_join(test, by = c("Player" = "Player_ID")) %>%
   dplyr::select(Player, player_name, Accuracy) %>%
