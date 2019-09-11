@@ -106,7 +106,7 @@ for(i in 1:nrow(re)) {
 }
 ```
 
-# Test Accuracy
+# Get Overall Test Accuracy
 ```{r}
 max_acc = 0
 
@@ -118,3 +118,31 @@ print(paste("Accuracy:", accuracy))
 print(paste("Sensitivity:",sensitivity(conf_matrix)))
 print(paste("Specificity:",specificity(conf_matrix)))
 ```
+
+# Get Accuracy By Player
+```{r}
+prediction_id = data.frame(Prediction=ifelse(shot_predictions >= 0.5, 1, 0), Player_ID=test_multiply$Player_ID)
+players = unique(prediction_id$Player_ID)
+player_accuracies = data.frame(Player=0,Accuracy=0)
+for(i in players) {
+  player_predictions = prediction_id %>%
+    filter(Player_ID == i)
+  player_shots2 = test_multiply %>%
+    filter(Player_ID == i)
+  accuracy = sum(player_predictions$Prediction == player_shots2$SHOT_RESULT2) / nrow(player_predictions)
+  player_accuracies = rbind(player_accuracies, data.frame(Player=i, Accuracy=accuracy))
+}
+player_accuracies = player_accuracies[-1,]
+```
+
+# Look at top accuracies
+```{r}
+player_accuracies %>%
+  top_n(10, wt = Accuracy) %>%
+  inner_join(test, by = c("Player" = "Player_ID")) %>%
+  dplyr::select(Player, player_name, Accuracy) %>%
+  unique() %>%
+  arrange(desc(Accuracy))
+```
+
+
