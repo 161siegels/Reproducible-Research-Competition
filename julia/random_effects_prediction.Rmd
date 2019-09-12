@@ -153,4 +153,47 @@ player_accuracies %>%
   arrange(desc(Accuracy))
 ```
 
+### Get improvement over baseline accuracy
+
+# Get Baseline Accuracies
+```{r}
+getMax = function(a,b) {
+  if(a > b) {
+    return(a)
+  }
+  return(b)
+}
+
+baselines = data.frame(Player=0, baseline=0)
+for(i in unique(test$Player_ID)) {
+  shots = test %>%
+    filter(Player_ID == i)
+  makes = sum(shots$SHOT_RESULT2)
+  misses = nrow(shots) - makes
+  baselines = rbind(baselines, data.frame(Player=i, baseline=(getMax(makes, misses)) / nrow(shots)))
+}
+baselines = baselines[-1,]
+```
+
+# Get Improvement from Baseline Per Player
+```{r}
+player_accuracies$Improvement = 0
+for(i in player_accuracies$Player) {
+  player_accuracies$Improvement[i] = player_accuracies$Accuracy[i] - baselines$baseline[i]
+}
+head(player_accuracies)
+```
+
+# Get Top Relevant Baseline Improvements
+```{r}
+player_accuracies %>%
+  filter(Player %in% player_shot_counts$Player_ID) %>%
+  top_n(10, wt = Improvement) %>%
+  inner_join(test, by = c("Player" = "Player_ID")) %>%
+  dplyr::select(Player, player_name, Accuracy, Improvement) %>%
+  unique() %>%
+  arrange(desc(Accuracy))
+mean(player_accuracies$Improvement)
+```
+
 
