@@ -1,7 +1,5 @@
 ---
 title: "Mixed Models Prediction"
-author: "James Bury"
-date: "9/5/2019"
 output: html_document
 ---
 
@@ -192,7 +190,7 @@ player_accuracies %>%
   inner_join(test, by = c("Player" = "Player_ID")) %>%
   dplyr::select(Player, player_name, Accuracy, Improvement) %>%
   unique() %>%
-  arrange(desc(Accuracy))
+  arrange(desc(Improvement))
 mean(player_accuracies$Improvement)
 ```
 
