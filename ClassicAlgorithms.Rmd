@@ -1,6 +1,6 @@
 ---
 title: "ClassicAlgorithms"
-author: "Spencer Siegel"
+author: ""
 date: "9/2/2019"
 output: html_document
 ---
