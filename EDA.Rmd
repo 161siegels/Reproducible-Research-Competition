@@ -1,6 +1,6 @@
 ---
 title: "EDA"
-author: "Spencer Siegel"
+author: ""
 date: "8/27/2019"
 output: html_document
 ---
