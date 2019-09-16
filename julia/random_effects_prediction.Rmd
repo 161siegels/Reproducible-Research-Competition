@@ -1,7 +1,5 @@
 ---
 title: "Mixed Models Prediction"
-author: "James Bury"
-date: "9/5/2019"
 output: html_document
 ---
 
@@ -106,7 +104,7 @@ for(i in 1:nrow(re)) {
 }
 ```
 
-# Test Accuracy
+# Get Overall Test Accuracy
 ```{r}
 max_acc = 0
 
@@ -118,3 +116,82 @@ print(paste("Accuracy:", accuracy))
 print(paste("Sensitivity:",sensitivity(conf_matrix)))
 print(paste("Specificity:",specificity(conf_matrix)))
 ```
+
+# Get Accuracy By Player
+```{r}
+prediction_id = data.frame(Prediction=ifelse(shot_predictions >= 0.5, 1, 0), Player_ID=test_multiply$Player_ID)
+players = unique(prediction_id$Player_ID)
+player_accuracies = data.frame(Player=0,Accuracy=0)
+for(i in players) {
+  player_predictions = prediction_id %>%
+    filter(Player_ID == i)
+  player_shots2 = test_multiply %>%
+    filter(Player_ID == i)
+  accuracy = sum(player_predictions$Prediction == player_shots2$SHOT_RESULT2) / nrow(player_predictions)
+  player_accuracies = rbind(player_accuracies, data.frame(Player=i, Accuracy=accuracy))
+}
+player_accuracies = player_accuracies[-1,]
+```
+
+# Look at top accuracies
+```{r}
+player_shot_counts = test %>%
+  group_by(Player_ID) %>%
+  summarize(
+    n=n()
+  ) %>%
+  filter(n >= 100)
+
+player_accuracies %>%
+  filter(Player %in% player_shot_counts$Player_ID) %>%
+  top_n(10, wt = Accuracy) %>%
+  inner_join(test, by = c("Player" = "Player_ID")) %>%
+  dplyr::select(Player, player_name, Accuracy) %>%
+  unique() %>%
+  arrange(desc(Accuracy))
+```
+
+### Get improvement over baseline accuracy
+
+# Get Baseline Accuracies
+```{r}
+getMax = function(a,b) {
+  if(a > b) {
+    return(a)
+  }
+  return(b)
+}
+
+baselines = data.frame(Player=0, baseline=0)
+for(i in unique(test$Player_ID)) {
+  shots = test %>%
+    filter(Player_ID == i)
+  makes = sum(shots$SHOT_RESULT2)
+  misses = nrow(shots) - makes
+  baselines = rbind(baselines, data.frame(Player=i, baseline=(getMax(makes, misses)) / nrow(shots)))
+}
+baselines = baselines[-1,]
+```
+
+# Get Improvement from Baseline Per Player
+```{r}
+player_accuracies$Improvement = 0
+for(i in player_accuracies$Player) {
+  player_accuracies$Improvement[i] = player_accuracies$Accuracy[i] - baselines$baseline[i]
+}
+head(player_accuracies)
+```
+
+# Get Top Relevant Baseline Improvements
+```{r}
+player_accuracies %>%
+  filter(Player %in% player_shot_counts$Player_ID) %>%
+  top_n(10, wt = Improvement) %>%
+  inner_join(test, by = c("Player" = "Player_ID")) %>%
+  dplyr::select(Player, player_name, Accuracy, Improvement) %>%
+  unique() %>%
+  arrange(desc(Improvement))
+mean(player_accuracies$Improvement)
+```
+
+

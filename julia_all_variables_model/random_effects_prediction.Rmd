@@ -1,0 +1,215 @@
+---
+title: "Mixed Models Prediction"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+if(!require(knitr)) {install.packages("knitr", repos="http://cran.us.r-project.org"); library(knitr)}
+knitr::opts_chunk$set(echo = FALSE)
+if(!require(dplyr)) {install.packages("dplyr", repos="http://cran.us.r-project.org"); library(dplyr)}
+if(!require(tidyverse)) {install.packages("tidyverse", repos="http://cran.us.r-project.org"); library(tidyverse)}
+if(!require(zoo)) {install.packages("zoo", repos="http://cran.us.r-project.org"); library(zoo)}
+if(!require(data.table)) {install.packages("data.table", repos="http://cran.us.r-project.org"); library(data.table)}
+if(!require(MASS)) {install.packages("MASS", repos="http://cran.us.r-project.org"); library(MASS)}
+if(!require(randomForest)) {install.packages("randomForest", repos="http://cran.us.r-project.org"); library(randomForest)}
+if(!require(Ckmeans.1d.dp)) {install.packages("Ckmeans.1d.dp", repos="http://cran.us.r-project.org"); library(Ckmeans.1d.dp)}
+if(!require(DAAG)) {install.packages("DAAG", repos="http://cran.us.r-project.org"); library(DAAG)}
+if(!require(e1071)) {install.packages("e1071", repos="http://cran.us.r-project.org"); library(e1071)}
+if(!require(splines)) {install.packages("splines", repos="http://cran.us.r-project.org"); library(splines)}
+if(!require(readr)) {install.packages("readr", repos="http://cran.us.r-project.org"); library(readr)}
+if(!require(class)) {install.packages("class", repos="http://cran.us.r-project.org"); library(class)}
+if(!require(xgboost)) {install.packages("xgboost", repos="http://cran.us.r-project.org"); library(xgboost)}
+if(!require(mlr)) {install.packages("mlr", repos="http://cran.us.r-project.org"); library(mlr)}
+if(!require(parallelMap)) {install.packages("parallelMap", repos="http://cran.us.r-project.org"); library(parallelMap)}
+if(!require(parallel)) {install.packages("parallel", repos="http://cran.us.r-project.org"); library(parallel)}
+if(!require(cluster)) {install.packages("cluster", repos="http://cran.us.r-project.org"); library(cluster)}
+if(!require(factoextra)) {install.packages("factoextra", repos="http://cran.us.r-project.org"); library(factoextra)}
+if(!require(gridExtra)) {install.packages("gridExtra", repos="http://cran.us.r-project.org"); library(gridExtra)}
+if(!require(cluster)) {install.packages("cluster", repos="http://cran.us.r-project.org"); library(cluster)}
+if(!require(mclust)) library(mclust)
+library(gridExtra)
+library(caret)
+```
+
+# Set up vairables
+```{r cars}
+train<-read.csv("scaled_train.csv")
+test =read.csv("scaled_test.csv")
+fix<-read.csv('fixed_effects_fixed.csv')
+re<-read.csv('random_effects_fixed.csv')
+```
+
+```{r}
+test = test %>% 
+  dplyr::select(FG_Percent, FT_Percent, FG3_Percent, layup, dunk, hook, fadeaway, pullup, running, driving, reverse, fingerroll, putback, turnaround, bank, point_diff, tip, TOUCH_TIME, DRIBBLES, ratio, jump_shot, End_SC, End_PC, LOCATION, Quick_S, Clutch_T, Garbage_T, SHOT_CLOCK, SHOT_NUMBER, SHOT_RESULT2, player_name)
+
+# Create Player id for test
+test2 = test %>%
+  dplyr::select(player_name) %>%
+  unique()
+test2$Player_ID = 1:nrow(test2)
+test3 = inner_join(test, test2, by = c("player_name" = "player_name"))
+test = test3
+test = test %>%
+  dplyr::select(FG_Percent, FT_Percent, FG3_Percent, layup, dunk, hook, fadeaway, pullup, running, driving, reverse, fingerroll, putback, turnaround, bank, point_diff, tip, TOUCH_TIME, DRIBBLES, ratio, jump_shot, End_SC, End_PC, LOCATION, Quick_S, Clutch_T, Garbage_T, SHOT_CLOCK, SHOT_NUMBER, SHOT_RESULT2, player_name, Player_ID)
+
+re = re %>%
+  dplyr::select(-X)
+
+test = test %>%
+  dplyr::select(-player_name)
+
+# Are all the column names in the same order in train and test?
+!(FALSE %in% (colnames(test[-30]) == colnames(re[2:31])))
+```
+
+```{r}
+re_multiply = re
+
+test$Intercept = 1
+
+test = test %>%
+  dplyr::select(Intercept, everything())
+test_multiply = test
+
+shot_predictions = list()
+
+for(i in 1:nrow(re)) {
+  
+  # Random Effects
+  player_shots = test_multiply %>%
+    dplyr::select(-SHOT_RESULT2) %>%
+    filter(Player_ID == i)
+  player_coefficients = re_multiply[i,]
+  
+  player_shot_matrix = as.matrix(player_shots %>%
+                                   dplyr::select(-Player_ID))
+  player_coefficients_matrix = t(as.matrix(player_coefficients %>%
+                                             dplyr::select(-Player_ID)))
+  prod = player_shot_matrix %*% player_coefficients_matrix
+  
+  # Fixed Effects
+  fix_coefficients = fix$x
+  fix_coefficients_matrix = as.matrix(fix_coefficients)
+  fixed_prod = player_shot_matrix %*% fix_coefficients_matrix
+  
+  for(j in 1:length(prod)) {
+    prod[j] = prod[j] + fixed_prod[j]
+  }
+  
+  # Calculate Predictions
+  shot_predictions = append(shot_predictions, 1/(exp(-(prod))+1))
+}
+```
+
+# Get Overall Test Accuracy
+```{r}
+max_acc = 0
+
+prediction = ifelse(shot_predictions >= 0.55, 1, 0)
+accuracy = sum(prediction == test$SHOT_RESULT2) / nrow(test)
+
+conf_matrix = table(prediction, test[, "SHOT_RESULT2"])
+print(paste("Accuracy:", accuracy))
+print(paste("Specificity:",sensitivity(conf_matrix)))
+print(paste("Sensitivity:",specificity(conf_matrix)))
+```
+
+# Get Accuracy By Player
+```{r}
+prediction_id = data.frame(Prediction=ifelse(shot_predictions >= 0.5, 1, 0), Player_ID=test_multiply$Player_ID)
+players = unique(prediction_id$Player_ID)
+player_accuracies = data.frame(Player=0,Accuracy=0)
+for(i in players) {
+  player_predictions = prediction_id %>%
+    filter(Player_ID == i)
+  player_shots2 = test_multiply %>%
+    filter(Player_ID == i)
+  accuracy = sum(player_predictions$Prediction == player_shots2$SHOT_RESULT2) / nrow(player_predictions)
+  player_accuracies = rbind(player_accuracies, data.frame(Player=i, Accuracy=accuracy))
+}
+player_accuracies = player_accuracies[-1,]
+```
+
+# Load in test again to get Player_ID and player_name
+```{r}
+test = read.csv("scaled_test.csv") %>% 
+  dplyr::select(FG_Percent, FT_Percent, FG3_Percent, layup, dunk, hook, fadeaway, pullup, running, driving, reverse, fingerroll, putback, turnaround, bank, point_diff, tip, TOUCH_TIME, DRIBBLES, ratio, jump_shot, End_SC, End_PC, LOCATION, Quick_S, Clutch_T, Garbage_T, SHOT_CLOCK, SHOT_NUMBER, SHOT_RESULT2, player_name)
+
+# Create Player id for test
+test2 = test %>%
+  dplyr::select(player_name) %>%
+  unique()
+test2$Player_ID = 1:nrow(test2)
+test3 = inner_join(test, test2, by = c("player_name" = "player_name"))
+test = test3
+test = test %>%
+  dplyr::select(FG_Percent, FT_Percent, FG3_Percent, layup, dunk, hook, fadeaway, pullup, running, driving, reverse, fingerroll, putback, turnaround, bank, point_diff, tip, TOUCH_TIME, DRIBBLES, ratio, jump_shot, End_SC, End_PC, LOCATION, Quick_S, Clutch_T, Garbage_T, SHOT_CLOCK, SHOT_NUMBER, SHOT_RESULT2, player_name, Player_ID)
+```
+
+# Look at top accuracies
+```{r}
+player_shot_counts = test %>%
+  group_by(Player_ID) %>%
+  summarize(
+    n=n()
+  ) %>%
+  filter(n >= 100)
+
+player_accuracies %>%
+  filter(Player %in% player_shot_counts$Player_ID) %>%
+  top_n(10, wt = Accuracy) %>%
+  inner_join(test, by = c("Player" = "Player_ID")) %>%
+  dplyr::select(Player, player_name, Accuracy) %>%
+  unique() %>%
+  arrange(desc(Accuracy))
+```
+
+### Get improvement over baseline accuracy
+
+# Get Baseline Accuracies
+```{r}
+getMax = function(a,b) {
+  if(a > b) {
+    return(a)
+  }
+  return(b)
+}
+baselines = data.frame(Player=0, baseline=0)
+for(i in unique(test$Player_ID)) {
+  shots = test %>%
+    filter(Player_ID == i)
+  makes = sum(shots$SHOT_RESULT2)
+  misses = nrow(shots) - makes
+  baselines = rbind(baselines, data.frame(Player=i, baseline=(getMax(makes, misses)) / nrow(shots)))
+}
+baselines = baselines[-1,]
+```
+
+# Get Improvement from Baseline Per Player
+```{r}
+player_accuracies$Improvement = 0
+for(i in player_accuracies$Player) {
+  player_accuracies$Improvement[i] = player_accuracies$Accuracy[i] - baselines$baseline[i]
+}
+head(player_accuracies)
+```
+
+# Get Top Relevant Baseline Improvements
+```{r}
+player_accuracies_with_name = player_accuracies %>%
+  filter(Player %in% player_shot_counts$Player_ID) %>%
+  top_n(10, wt = Improvement) %>%
+  inner_join(test, by = c("Player" = "Player_ID")) %>%
+  dplyr::select(Player, player_name, Accuracy, Improvement) %>%
+  unique() %>%
+  arrange(desc(Improvement))
+player_accuracies_with_name
+mean(player_accuracies$Improvement)
+```
+```{r}
+ggplot(data=player_accuracies_with_name) +
+  geom_point(mapping = aes(x=player_name,y=Improvement))
+```
